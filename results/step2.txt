@@ -1,0 +1,76 @@
+﻿
+################ Без защиты (Loyalty 20 с, таймаута нет) ################
+Стек поднят: envs/step2-none.env
+powershell :  Container cinema-system-loadgen-run-3ded762a1ecd Creating 
+строка:4 знак:5
++     powershell -ExecutionPolicy Bypass -File "scripts\$s.ps1" 2>&1 |  ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Container cine...a1ecd Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Container cinema-system-loadgen-run-3ded762a1ecd Created 
+[1-none] 240 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓, 8/╤Б ╨▓ ╤В╨╡╤З╨╡╨╜╨╕╨╡ 30 ╤Б, ╤Г╤Б╨┐╨╡╤Е = 201 ╨╖╨░ тЙд 5 ╤Б
+
+=== ╨Ш╤В╨╛╨│ [1-none] ===
+╤Г╤Б╨┐╨╡╤И╨╜╤Л╤Е ╨┐╨╛╨║╤Г╨┐╨╛╨║ (201 ╨╖╨░ тЙд 5 ╤Б): 0/240 = 0%
+╤Б╤В╨░╤В╤Г╤Б╤Л: {'TIMEOUT': 240}
+/health: ok 1 ╨╕╨╖ 18 ╨╛╨┐╤А╨╛╤Б╨╛╨▓
+/health ╨┐╨╛ ╤Б╨╡╨║╤Г╨╜╨┤╨░╨╝: 0╤Б:ok 1╤Б:X 3╤Б:X 5╤Б:X 7╤Б:X 9╤Б:X 11╤Б:X 13╤Б:X 15╤Б:X 17╤Б:X 19╤Б:X 21╤Б:X 23╤Б:X 25╤Б:X 27╤Б:X 29╤Б:X 31╤Б:X 33╤Б:X
+
+################ С таймаутом 1.5 с ################
+Стек поднят: envs/step2-timeout.env
+ Container cinema-system-loadgen-run-434901a47c7d Creating 
+ Container cinema-system-loadgen-run-434901a47c7d Created 
+[2-timeout] 240 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓, 8/╤Б ╨▓ ╤В╨╡╤З╨╡╨╜╨╕╨╡ 30 ╤Б, ╤Г╤Б╨┐╨╡╤Е = 201 ╨╖╨░ тЙд 5 ╤Б
+
+=== ╨Ш╤В╨╛╨│ [2-timeout] ===
+╤Г╤Б╨┐╨╡╤И╨╜╤Л╤Е ╨┐╨╛╨║╤Г╨┐╨╛╨║ (201 ╨╖╨░ тЙд 5 ╤Б): 16/240 = 7%
+╤Б╤В╨░╤В╤Г╤Б╤Л: {'201': 16, 'TIMEOUT': 224}
+╨▓╤А╨╡╨╝╤П ╨╛╤В╨▓╨╡╤В╨░ ╤Б╤А╨╡╨┤╨╕ 201: p50=3618 ╨╝╤Б, p95=4706 ╨╝╤Б, ╤Б╤А╨╡╨┤╨╜╨╡╨╡=3125 ╨╝╤Б
+/health: ok 1 ╨╕╨╖ 18 ╨╛╨┐╤А╨╛╤Б╨╛╨▓
+/health ╨┐╨╛ ╤Б╨╡╨║╤Г╨╜╨┤╨░╨╝: 0╤Б:ok 1╤Б:X 3╤Б:X 5╤Б:X 7╤Б:X 9╤Б:X 11╤Б:X 13╤Б:X 15╤Б:X 17╤Б:X 19╤Б:X 21╤Б:X 23╤Б:X 25╤Б:X 27╤Б:X 29╤Б:X 31╤Б:X 33╤Б:X
+
+--- Примеры ошибок вызова Loyalty в логе Tickets ---
+
+2026-11-13 21:21:24,982 [tickets] WARNING tickets: Failed to accrue points for ticket_id=91be868d-19e6-45e9-93b4-aba8d3
+1592e9: ReadTimeout('timed out')
+2026-11-13 21:21:25,053 [tickets] WARNING tickets: Failed to accrue points for ticket_id=586f15bc-449b-4266-a044-00dbaf
+ec23c8: ReadTimeout('timed out')
+2026-11-13 21:21:25,172 [tickets] WARNING tickets: Failed to accrue points for ticket_id=88c79e98-76ee-47e8-a614-82c7fa
+d8ea5d: ReadTimeout('timed out')
+
+################ С таймаутом 1.5 с + circuit breaker ################
+Стек поднят: envs/step2-breaker.env
+ Container cinema-system-loadgen-run-c97b5a9e0058 Creating 
+ Container cinema-system-loadgen-run-c97b5a9e0058 Created 
+[3-breaker] 240 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓, 8/╤Б ╨▓ ╤В╨╡╤З╨╡╨╜╨╕╨╡ 30 ╤Б, ╤Г╤Б╨┐╨╡╤Е = 201 ╨╖╨░ тЙд 5 ╤Б
+
+=== ╨Ш╤В╨╛╨│ [3-breaker] ===
+╤Г╤Б╨┐╨╡╤И╨╜╤Л╤Е ╨┐╨╛╨║╤Г╨┐╨╛╨║ (201 ╨╖╨░ тЙд 5 ╤Б): 240/240 = 100%
+╤Б╤В╨░╤В╤Г╤Б╤Л: {'201': 240}
+╨▓╤А╨╡╨╝╤П ╨╛╤В╨▓╨╡╤В╨░ ╤Б╤А╨╡╨┤╨╕ 201: p50=39 ╨╝╤Б, p95=1582 ╨╝╤Б, ╤Б╤А╨╡╨┤╨╜╨╡╨╡=211 ╨╝╤Б
+/health: ok 28 ╨╕╨╖ 29 ╨╛╨┐╤А╨╛╤Б╨╛╨▓
+/health ╨┐╨╛ ╤Б╨╡╨║╤Г╨╜╨┤╨░╨╝: 0╤Б:ok 1╤Б:X 3╤Б:ok 4╤Б:ok 5╤Б:ok 6╤Б:ok 7╤Б:ok 8╤Б:ok 9╤Б:ok 10╤Б:ok 11╤Б:ok 12╤Б:ok 13╤Б:ok 14╤Б:ok 15╤Б:ok 16╤Б:ok 17╤Б:ok 18╤Б:ok 19╤Б:ok 20╤Б:ok 21╤Б:ok 22╤Б:ok 23╤Б:ok 24╤Б:ok 25╤Б:ok 26╤Б:ok 27╤Б:ok 28╤Б:ok 29╤Б:ok
+
+--- Переходы circuit breaker в логе Tickets ---
+2026-11-13 21:22:43,093 [tickets] WARNING breaker: Circuit breaker: CLOSED -> OPEN (5 consecutive failures, open for 10
+s)
+2026-11-13 21:22:53,137 [tickets] WARNING breaker: Circuit breaker: OPEN -> HALF_OPEN (10s passed, letting one probe ca
+ll through)
+2026-11-13 21:22:54,649 [tickets] WARNING breaker: Circuit breaker: HALF_OPEN -> OPEN (probe call failed, open for 10s 
+more)
+2026-11-13 21:23:04,728 [tickets] WARNING breaker: Circuit breaker: OPEN -> HALF_OPEN (10s passed, letting one probe ca
+ll through)
+2026-11-13 21:23:06,237 [tickets] WARNING breaker: Circuit breaker: HALF_OPEN -> OPEN (probe call failed, open for 10s 
+more)
+--- Примеры пропущенных вызовов ---
+2026-11-13 21:22:43,124 [tickets] WARNING tickets: Circuit is OPEN: Loyalty call skipped for ticket_id=5c174266-3290-4e
+e5-9982-29ba6ba50ec3
+2026-11-13 21:22:43,146 [tickets] WARNING tickets: Circuit is OPEN: Loyalty call skipped for ticket_id=8d1ada81-7019-43
+ae-a46a-8dceed55b53b
+2026-11-13 21:22:43,160 [tickets] WARNING tickets: Circuit is OPEN: Loyalty call skipped for ticket_id=bf86248c-9fba-43
+31-b811-726a9ff991c4
+
+Готово. Файлы: results\1-none.csv, 2-timeout.csv, 3-breaker.csv
+
+

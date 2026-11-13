@@ -1,0 +1,43 @@
+﻿Стек поднят, Loyalty исправен. Запускаю нагрузку 6 запросов/с на 80 с...
+
+[t=10 с] Останавливаю Loyalty (docker compose stop loyalty)
+  -> предохранитель разомкнулся
+Жду 25 с: пробные вызовы при остановленном Loyalty должны возвращать его в OPEN...
+
+[Loyalty поднимается обратно, задержка 0]
+  -> пробный вызов успешен, предохранитель замкнулся
+
+Жду окончания нагрузки...
+powershell : docker :  Container cinema-system-loadgen-run-6567a5bcc28c Creating 
+строка:4 знак:5
++     powershell -ExecutionPolicy Bypass -File "scripts\$s.ps1" 2>&1 |  ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (docker :  Conta...cc28c Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    + CategoryInfo          : NotSpecified: ( Container cine...cc28c Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Container cinema-system-loadgen-run-6567a5bcc28c Created 
+[lifecycle] 480 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓, 6/╤Б ╨▓ ╤В╨╡╤З╨╡╨╜╨╕╨╡ 80 ╤Б, ╤Г╤Б╨┐╨╡╤Е = 201 ╨╖╨░ тЙд 5 ╤Б
+
+=== ╨Ш╤В╨╛╨│ [lifecycle] ===
+╤Г╤Б╨┐╨╡╤И╨╜╤Л╤Е ╨┐╨╛╨║╤Г╨┐╨╛╨║ (201 ╨╖╨░ тЙд 5 ╤Б): 457/480 = 95%
+╤Б╤В╨░╤В╤Г╤Б╤Л: {'201': 457, 'TIMEOUT': 23}
+╨▓╤А╨╡╨╝╤П ╨╛╤В╨▓╨╡╤В╨░ ╤Б╤А╨╡╨┤╨╕ 201: p50=50 ╨╝╤Б, p95=1517 ╨╝╤Б, ╤Б╤А╨╡╨┤╨╜╨╡╨╡=226 ╨╝╤Б
+/health: ok 74 ╨╕╨╖ 77 ╨╛╨┐╤А╨╛╤Б╨╛╨▓
+/health ╨┐╨╛ ╤Б╨╡╨║╤Г╨╜╨┤╨░╨╝: 0╤Б:ok 1╤Б:ok 2╤Б:ok 3╤Б:ok 4╤Б:ok 5╤Б:ok 6╤Б:ok 7╤Б:ok 8╤Б:ok 9╤Б:ok 10╤Б:X 12╤Б:X 14╤Б:X 16╤Б:ok 18╤Б:ok 19╤Б:ok 20╤Б:ok 21╤Б:ok 22╤Б:ok 23╤Б:ok 24╤Б:ok 25╤Б:ok 26╤Б:ok 27╤Б:ok 28╤Б:ok 29╤Б:ok 30╤Б:ok 31╤Б:ok 32╤Б:ok 33╤Б:ok 34╤Б:ok 35╤Б:ok 36╤Б:ok 37╤Б:ok 38╤Б:ok 39╤Б:ok 40╤Б:ok 41╤Б:ok 42╤Б:ok 43╤Б:ok 44╤Б:ok 45╤Б:ok 46╤Б:ok 47╤Б:ok 48╤Б:ok 49╤Б:ok 50╤Б:ok 51╤Б:ok 52╤Б:ok 53╤Б:ok 54╤Б:ok 55╤Б:ok 56╤Б:ok 57╤Б:ok 58╤Б:ok 59╤Б:ok 60╤Б:ok 61╤Б:ok 62╤Б:ok 63╤Б:ok 64╤Б:ok 65╤Б:ok 66╤Б:ok 67╤Б:ok 68╤Б:ok 69╤Б:ok 70╤Б:ok 71╤Б:ok 72╤Б:ok 73╤Б:ok 74╤Б:ok 75╤Б:ok 76╤Б:ok 77╤Б:ok 78╤Б:ok 79╤Б:ok 80╤Б:ok
+
+=== Переходы предохранителя в логе Tickets ===
+
+2026-11-13 21:24:11,120 [tickets] WARNING breaker: Circuit breaker: CLOSED -> OPEN (5 consecutive failures, open for 10
+s)
+2026-11-13 21:24:21,274 [tickets] WARNING breaker: Circuit breaker: OPEN -> HALF_OPEN (10s passed, letting one probe ca
+ll through)
+2026-11-13 21:24:29,187 [tickets] WARNING breaker: Circuit breaker: HALF_OPEN -> OPEN (probe call failed, open for 10s 
+more)
+2026-11-13 21:24:39,271 [tickets] WARNING breaker: Circuit breaker: OPEN -> HALF_OPEN (10s passed, letting one probe ca
+ll through)
+2026-11-13 21:24:39,297 [tickets] WARNING breaker: Circuit breaker: HALF_OPEN -> CLOSED (probe call succeeded)
+
+

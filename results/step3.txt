@@ -1,0 +1,42 @@
+﻿
+=== Чистый старт, режим событий (MODE=async), начисление <прибавить баллы> ===
+
+=== 1. Останавливаю Loyalty полностью и продаю три билета ===
+  билет A1 (c-a1): HTTP 201 за 82 мс  {"ticket_id":"b4a4278a-d744-4427-90bf-b5dcd0048125","session_id":"s1","seat":"A1","customer_id":"c-a1","loyalty":"queued"}
+  билет A2 (c-a2): HTTP 201 за 48 мс  {"ticket_id":"90068a93-790d-41c5-bdb9-e155da62eadc","session_id":"s1","seat":"A2","customer_id":"c-a2","loyalty":"queued"}
+  билет A3 (c-a3): HTTP 201 за 39 мс  {"ticket_id":"c218e9f3-698b-4560-b06e-a4e4633fafa3","session_id":"s1","seat":"A3","customer_id":"c-a3","loyalty":"queued"}
+  Очередь в RabbitMQ (события накопились, очередь durable, не exclusive, не auto_delete):
+name	messages_ready	messages_unacknowledged	durable	auto_delete	exclusive
+loyalty.ticket_sold	3	0	true	false	false
+
+=== 2. Поднимаю Loyalty - баллы начисляются задним числом ===
+  клиент c-a1: счётчик <прибавить> = 50; сумма по записям начислений = 0 (записей: 0)
+  клиент c-a2: счётчик <прибавить> = 50; сумма по записям начислений = 0 (записей: 0)
+  клиент c-a3: счётчик <прибавить> = 50; сумма по записям начислений = 0 (записей: 0)
+  Очередь после обработки:
+name	messages_ready	messages_unacknowledged	durable	auto_delete	exclusive
+loyalty.ticket_sold	0	0	true	false	false
+
+2026-11-13 21:25:46,414 [loyalty] INFO consumer: Accrued 50 points to customer=c-a1 for ticket=b4a4278a-d744-4427-90bf-
+b5dcd0048125 message_id=bb021b23-e932-4ddc-a634-2d6457145abf
+2026-11-13 21:25:46,421 [loyalty] INFO consumer: Accrued 50 points to customer=c-a2 for ticket=90068a93-790d-41c5-bdb9-
+e155da62eadc message_id=a180d704-63af-492c-a60b-1d467469d07e
+2026-11-13 21:25:46,428 [loyalty] INFO consumer: Accrued 50 points to customer=c-a3 for ticket=c218e9f3-698b-4560-b06e-
+a4e4633fafa3 message_id=ad835cf4-981c-4c33-b55c-d0a702f5283a
+
+=== 3. Повторная доставка при начислении <прибавить баллы> ===
+published TicketSold message_id=m-dup-1 ticket_id=ticket-dup-1 x2
+  клиент c-dup: счётчик <прибавить> = 100; сумма по записям начислений = 0 (записей: 0)
+  (одно событие, дважды один и тот же message_id -> баллы удвоились)
+
+=== 4. Начисление с уникальным ticket_id: INSERT ... ON CONFLICT (ticket_id) DO NOTHING ===
+published TicketSold message_id=m-dup-2 ticket_id=ticket-dup-2 x2
+  клиент c-dup2: счётчик <прибавить> = 0; сумма по записям начислений = 50 (записей: 1)
+2026-11-13 21:26:01,179 [loyalty] INFO consumer: Accrued 50 points to customer=c-dup2 for ticket=ticket-dup-2 message_i
+d=m-dup-2
+2026-11-13 21:26:01,181 [loyalty] INFO consumer: Duplicate event ignored: ticket_id=ticket-dup-2 message_id=m-dup-2 (al
+ready accrued)
+INFO:     172.19.0.1:34728 - "GET /balance/c-dup2 HTTP/1.1" 200 OK
+  (то же самое событие дважды -> одна запись, баланс не изменился при повторе)
+
+

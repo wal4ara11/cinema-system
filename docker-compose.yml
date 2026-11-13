@@ -1,0 +1,88 @@
+# Кинотеатр: Tickets продаёт билеты, Loyalty начисляет бонусные баллы.
+# Режимы переключаются переменными окружения (значения по умолчанию — в .env,
+# готовые наборы для каждого шага — в каталоге envs/, запуск:
+#   docker compose --env-file envs/<шаг>.env up -d --build).
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # панель управления, guest/guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      # проверяет, что узел запущен и AMQP-порт принимает соединения
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  tickets:
+    build:
+      context: .
+      dockerfile: tickets/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      MODE: ${MODE:-sync}
+      WORKER_THREADS: ${WORKER_THREADS:-4}
+      LOYALTY_URL: http://loyalty:8002
+      LOYALTY_TIMEOUT_SEC: ${LOYALTY_TIMEOUT_SEC:-0}
+      IDEMPOTENCY_ENABLED: ${IDEMPOTENCY_ENABLED:-true}
+      BREAKER_ENABLED: ${BREAKER_ENABLED:-false}
+      BREAKER_FAIL_THRESHOLD: ${BREAKER_FAIL_THRESHOLD:-5}
+      BREAKER_OPEN_SEC: ${BREAKER_OPEN_SEC:-10}
+      RABBITMQ_HOST: rabbitmq
+      DB_PATH: /data/tickets.db
+    volumes:
+      - tickets-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  loyalty:
+    build:
+      context: .
+      dockerfile: loyalty/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      MODE: ${MODE:-sync}
+      LOYALTY_DELAY_MS: ${LOYALTY_DELAY_MS:-0}
+      ACCRUAL_MODE: ${ACCRUAL_MODE:-naive}
+      POINTS_PER_TICKET: ${POINTS_PER_TICKET:-50}
+      RABBITMQ_HOST: rabbitmq
+      DB_PATH: /data/loyalty.db
+    volumes:
+      - loyalty-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # генератор нагрузки: docker compose run --rm loadgen (не стартует вместе со стеком)
+  loadgen:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: loadgen/Dockerfile
+    environment:
+      TARGET: http://tickets:8001
+      RATE: ${RATE:-8}
+      DURATION: ${DURATION:-30}
+      LABEL: ${LABEL:-run}
+    volumes:
+      - ./results:/results
+
+volumes:
+  rabbitmq-data:
+  tickets-data:
+  loyalty-data:
