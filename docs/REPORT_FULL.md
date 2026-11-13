@@ -1,6 +1,3 @@
----
-title: "Практическое задание. Способы межсервисного взаимодействия. Вариант 2: Кинотеатр"
----
 
 # 1. Цель работы
 
@@ -17,8 +14,12 @@ title: "Практическое задание. Способы межсерви
 
 Репозиторий поднимается командой `docker compose up --build`. Стек: Python 3.12, FastAPI, SQLite, httpx, pika, RabbitMQ (`rabbitmq:3-management`).
 
+::: {custom-style="TabCaption"}
+Таблица 1 – Состав системы
+:::
+
 | Сервис | Порт | Роль |
-|---|---|---|
+|--------|--------|------------------------------------------|
 | tickets | 8001 | `POST /tickets` (session_id, seat, customer_id), `GET /tickets`, `GET /health` |
 | loyalty | 8002 | `POST /accrue` (синхронно), consumer очереди `loyalty.ticket_sold` (асинхронно), `GET /balance/{customer_id}` |
 | rabbitmq | 5672, 15672 | брокер и панель управления, healthcheck, у сервисов `depends_on: service_healthy` |
@@ -32,9 +33,25 @@ title: "Практическое задание. Способы межсерви
 - Circuit breaker написан вручную (около 60 строк): CLOSED, OPEN, HALF_OPEN. Ошибка — таймаут, ошибка соединения или ответ 5xx. Порог — 5 ошибок подряд, интервал размыкания — 10 с, затем ровно один пробный вызов; успех замыкает, неудача снова размыкает на 10 с. Без трафика предохранитель сам не переходит из OPEN: состояние пересматривается только при очередном запросе.
 - Обменник `cinema` (topic, durable), очередь `loyalty.ticket_sold` (именованная, durable, не exclusive, не auto-delete), сообщения `delivery_mode=2`, publisher confirms. Топология объявляется при старте Tickets и Loyalty (общий модуль `common/broker.py`), поэтому очередь существует до первой публикации. Loyalty делает ack только после записи начисления.
 
+Архитектура системы и оба способа взаимодействия показаны на рисунке 1.
+
+![](arch.png){width=11.5cm}
+
+::: {custom-style="FigCaption"}
+Рисунок 1 – Архитектура системы: синхронный вызов (шаги 1–2) и события через RabbitMQ (шаг 3)
+:::
+
 # 3. Шаг 1. Синхронная цепочка и дубликаты
 
 Tickets сохраняет билет, затем синхронно вызывает Loyalty (задержка 1,5 с) и только после ответа возвращает 201. Проверки занятости места нет — иначе дубль не воспроизвести.
+
+Последовательность событий при потере ответа показана на рисунке 2.
+
+![](seq1.png){width=11cm}
+
+::: {custom-style="FigCaption"}
+Рисунок 2 – Шаг 1: потеря ответа при обрыве клиента и дубликат
+:::
 
 **Без ключа.** Запрос с лимитом клиента 1 с обрывается, когда билет уже сохранён, затем повторяется. Результат: два билета на место A1 и 100 баллов вместо 50.
 
@@ -63,13 +80,21 @@ Tickets сохраняет билет, затем синхронно вызыв�
 
 Loyalty замедлен до 20 с, Tickets обрабатывает не больше 4 запросов одновременно. Нагрузка: 8 запросов в секунду в течение 30 с (240 запросов, у каждого свой `Idempotency-Key`), параллельно раз в секунду опрашивается `GET /health`. Успех — ответ 201 не позже чем за 5 с. Одна и та же нагрузка подавалась во всех трёх состояниях, перед каждым прогоном стек пересоздавался.
 
+::: {custom-style="TabCaption"}
+Таблица 2 – Результаты нагрузки в трёх состояниях (240 запросов, 8 в секунду, 30 с)
+:::
+
 | Состояние | Успешных покупок | p50 / p95 ответа среди 201 | /health с ответом ok |
-|---|---|---|---|
+|--------------------|---------------|------------------|------------|
 | Без защиты | 0 из 240 (0%) | ответов 201 нет, все 240 по таймауту клиента | 1 из 18 |
 | Таймаут 1,5 с | 16 из 240 (7%) | 3618 мс / 4706 мс | 1 из 18 |
 | Таймаут 1,5 с + circuit breaker | 240 из 240 (100%) | 39 мс / 1582 мс | 28 из 29 |
 
-![Результаты шага 2](step2-chart.png)
+![](step2-chart.png){width=15cm}
+
+::: {custom-style="FigCaption"}
+Рисунок 3 – Доля успешных покупок и доступность /health в трёх состояниях
+:::
 
 **Что закончилось.** Рабочие места Tickets. Без защиты каждый вызов Loyalty занимает один из четырёх потоков на 20 с; остальные запросы ждут в очереди и за 5 с не получают ответа. `/health` стоит в той же очереди и тоже не отвечает: сервис исправен, но в целом перестал работать.
 
@@ -78,6 +103,14 @@ Loyalty замедлен до 20 с, Tickets обрабатывает не бо�
 ```
 WARNING tickets: Failed to accrue points for ticket_id=91be868d-…: ReadTimeout('timed out')
 ```
+
+Автомат состояний предохранителя показан на рисунке 4.
+
+![](breaker.png){width=15.5cm}
+
+::: {custom-style="FigCaption"}
+Рисунок 4 – Автомат состояний circuit breaker (порог 5 ошибок, размыкание на 10 с)
+:::
 
 **Почему помогает breaker.** После пяти таймаутов подряд предохранитель размыкается, и следующие запросы завершаются за миллисекунды без сетевого вызова (пропускная способность определяется только записью в БД). Лог из прогона:
 
@@ -134,9 +167,7 @@ Accrued 50 points to customer=c-dup2 for ticket=ticket-dup-2 message_id=m-dup-2
 Duplicate event ignored: ticket_id=ticket-dup-2 message_id=m-dup-2 (already accrued)
 ```
 
-# 6. Ответы на вопросы
-
-Ответы на четыре вопроса варианта 2 с короткими фрагментами логов приведены в файле `REPORT.md` в корне репозитория.
+# 6. Ответы на вопросы для отчёта
 
 **1. Что вы увидели на шаге 1 и почему повтор создал второй билет и второе начисление?** Билет и начисление выполнились на сервере, а ответ до клиента не дошёл. Клиент не может отличить «операция не выполнена» от «операция выполнена, ответ потерян» и повторяет запрос. Без ключа повтор — новая операция: проверки места нет, и появляются второй билет и второе начисление. Это следствие того, что сеть ненадёжна, а POST не идемпотентен. Ключ превращает повтор в запрос, на который возвращается прежний ответ.
 
@@ -152,4 +183,197 @@ Duplicate event ignored: ticket_id=ticket-dup-2 message_id=m-dup-2 (already accr
 - Таймаут — обязательный минимум для любого синхронного вызова; без него медленная зависимость выводит из строя вызывающий сервис. Circuit breaker добавляет защиту от лишних обращений к деградировавшему сервису.
 - Асинхронное взаимодействие убирает временную связанность, но заменяет немедленную согласованность конечной и делает дубли нормой, поэтому обработчик обязан быть идемпотентным.
 
-Репозиторий с кодом и скриптами прогонов: https://github.com/<логин>/cinema-system
+Репозиторий с кодом, скриптами прогонов и результатами: https://github.com/wal4ara11/cinema-system. Краткая версия отчёта с ответами на вопросы — файл `REPORT.md` в корне репозитория.
+
+# Приложение А. Конфигурация экспериментов
+
+Все параметры задаются переменными окружения; наборы для каждого прогона лежат в каталоге `envs/`, прогоны выполняются скриптами из `scripts/`.
+
+::: {custom-style="TabCaption"}
+Таблица А.1 – Значения параметров по шагам
+:::
+
+| Параметр | Шаг 1 | Шаг 2: без защиты / таймаут / breaker | Шаг 3 |
+|----------------------|------------|---------------------------|------------------|
+| `MODE` | sync | sync / sync / sync | async |
+| `LOYALTY_DELAY_MS` | 1500 | 20000 / 20000 / 20000 | 0 |
+| `LOYALTY_TIMEOUT_SEC` | 0 (нет) | 0 / 1,5 / 1,5 | — |
+| `BREAKER_ENABLED` | false | false / false / true | — |
+| `BREAKER_FAIL_THRESHOLD`, `BREAKER_OPEN_SEC` | — | — / — / 5 и 10 | — |
+| `WORKER_THREADS` | 4 | 4 / 4 / 4 | 4 |
+| `IDEMPOTENCY_ENABLED` | true | true | true |
+| `ACCRUAL_MODE` | naive | naive | naive, затем idempotent |
+| Набор настроек | `step1.env` | `step2-none.env`, `step2-timeout.env`, `step2-breaker.env` | `step3-naive.env`, `step3-idempotent.env` |
+| Скрипт | `step1.ps1` | `step2.ps1`, `step2-lifecycle.ps1` | `step3.ps1` |
+
+Нагрузка шага 2 подаётся генератором `loadgen/loadgen.py` (запуск `docker compose run --rm loadgen`): 8 запросов в секунду в течение 30 с, у каждого запроса свой `Idempotency-Key`, клиентский лимит ответа 5 с, опрос `GET /health` раз в секунду. Посекундные результаты сохраняются в `results/*.csv`.
+
+# Приложение Б. Листинги ключевых фрагментов
+
+::: {custom-style="TabCaption"}
+Листинг Б.1 – Обработчик POST /tickets с ключом идемпотентности (tickets/main.py)
+:::
+
+```
+@app.post("/tickets")
+def create_ticket(req: TicketRequest, idempotency_key: str | None = Header(default=None)):
+    if not (settings.IDEMPOTENCY_ENABLED and idempotency_key):
+        code, body = _create_ticket(req)
+        return JSONResponse(body, status_code=code)
+
+    # Ключ резервируется ДО обработки, поэтому повтор, пришедший пока первый запрос
+    # ещё выполняется, видит статус 'processing' и получает 409 Conflict.
+    with db.connect() as conn:
+        cur = conn.execute("INSERT INTO idempotency_keys (key, status) VALUES (?, 'processing') "
+                           "ON CONFLICT (key) DO NOTHING", (idempotency_key,))
+        first = cur.rowcount == 1
+    if not first:
+        with db.connect() as conn:
+            row = conn.execute("SELECT * FROM idempotency_keys WHERE key = ?", (idempotency_key,)).fetchone()
+        if row["status"] == "done":
+            log.info("Idempotency-Key=%s replayed, returning stored response", idempotency_key)
+            return JSONResponse(json.loads(row["response_body"]), status_code=row["response_code"],
+                                headers={"Idempotent-Replay": "true"})
+        log.info("Idempotency-Key=%s is still processing, answering 409", idempotency_key)
+        return JSONResponse({"error": "request with this Idempotency-Key is still being processed"},
+                            status_code=409, headers={"Retry-After": "2"})
+    try:
+        code, body = _create_ticket(req)
+    except Exception:
+        with db.connect() as conn:          # освободить ключ, чтобы клиент мог повторить
+            conn.execute("DELETE FROM idempotency_keys WHERE key = ?", (idempotency_key,))
+        raise
+    with db.connect() as conn:
+        conn.execute("UPDATE idempotency_keys SET status = 'done', response_code = ?, response_body = ? "
+                     "WHERE key = ?", (code, json.dumps(body), idempotency_key))
+    return JSONResponse(body, status_code=code)
+```
+
+::: {custom-style="TabCaption"}
+Листинг Б.2 – Circuit breaker (tickets/breaker.py)
+:::
+
+```
+"""Упрощённый circuit breaker.
+
+CLOSED    — вызовы идут как обычно; считаем ошибки подряд.
+OPEN      — после `threshold` ошибок подряд вызовы не делаются вообще (мгновенный отказ
+            без сетевого запроса) в течение `open_sec` секунд.
+HALF_OPEN — по истечении `open_sec` пропускается ровно ОДИН пробный вызов, остальные
+            по-прежнему отклоняются. Успех пробного → CLOSED, неудача → снова OPEN
+            на те же `open_sec` секунд.
+
+Без трафика предохранитель сам по себе не переходит из OPEN: состояние пересматривается
+только в момент очередного запроса (в allow()).
+Ошибкой считаются таймаут, ошибка соединения и ответ 5xx (решает вызывающий код).
+"""
+import logging
+import threading
+import time
+
+log = logging.getLogger("breaker")
+
+CLOSED, OPEN, HALF_OPEN = "CLOSED", "OPEN", "HALF_OPEN"
+
+
+class CircuitBreaker:
+    def __init__(self, threshold: int, open_sec: float, clock=time.monotonic):
+        self.threshold = threshold
+        self.open_sec = open_sec
+        self._clock = clock
+        self._lock = threading.Lock()
+        self.state = CLOSED
+        self._fails = 0
+        self._opened_at = 0.0
+
+    def _to(self, state: str, reason: str) -> None:
+        log.warning("Circuit breaker: %s -> %s (%s)", self.state, state, reason)
+        self.state = state
+
+    def allow(self) -> str | None:
+        """None — вызов запрещён; 'call' — обычный вызов; 'probe' — пробный вызов."""
+        with self._lock:
+            if self.state == CLOSED:
+                return "call"
+            if self.state == OPEN and self._clock() - self._opened_at >= self.open_sec:
+                self._to(HALF_OPEN, f"{self.open_sec:g}s passed, letting one probe call through")
+                return "probe"
+            return None          # OPEN, пока не вышло время, или HALF_OPEN с уже идущей пробой
+
+    def success(self, permit: str) -> None:
+        with self._lock:
+            if permit == "probe":
+                self._fails = 0
+                self._to(CLOSED, "probe call succeeded")
+            elif self.state == CLOSED:
+                self._fails = 0
+
+    def failure(self, permit: str) -> None:
+        with self._lock:
+            if permit == "probe":
+                self._opened_at = self._clock()
+                self._to(OPEN, f"probe call failed, open for {self.open_sec:g}s more")
+            elif self.state == CLOSED:
+                self._fails += 1
+                if self._fails >= self.threshold:
+                    self._opened_at = self._clock()
+                    self._to(OPEN, f"{self._fails} consecutive failures, open for {self.open_sec:g}s")
+            # запоздалый результат вызова, начатого до размыкания, состояние не меняет
+```
+
+::: {custom-style="TabCaption"}
+Листинг Б.3 – Начисление баллов: «прибавить» и запись с уникальным ticket_id (loyalty/accrual.py)
+:::
+
+```
+"""Начисление баллов. Две реализации — для сравнения на шаге 3."""
+import db
+import settings
+
+
+def accrue(ticket_id: str, customer_id: str, points: int, message_id: str | None = None) -> str:
+    """Возвращает 'accrued' или 'duplicate'."""
+    with db.connect() as conn:
+        if settings.ACCRUAL_MODE == "idempotent":
+            # одна запись на билет; баланс = SUM(points) по таблице accruals
+            cur = conn.execute(
+                "INSERT INTO accruals (ticket_id, customer_id, points, message_id) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (ticket_id) DO NOTHING",
+                (ticket_id, customer_id, points, message_id))
+            return "accrued" if cur.rowcount == 1 else "duplicate"
+        # naive: «прибавить баллы» — каждое повторное обращение прибавляет ещё раз
+        conn.execute(
+            "INSERT INTO balances (customer_id, points) VALUES (?, ?) "
+            "ON CONFLICT (customer_id) DO UPDATE SET points = points + excluded.points",
+            (customer_id, points))
+        return "accrued"
+```
+
+::: {custom-style="TabCaption"}
+Листинг Б.4 – Обработка события TicketSold, ack после записи (loyalty/consumer.py)
+:::
+
+```
+def _on_message(ch, method, props, body):
+    message_id = props.message_id
+    try:
+        event = json.loads(body)
+        ticket_id, customer_id = event["ticket_id"], event["customer_id"]
+    except (ValueError, KeyError, TypeError):
+        log.error("Bad message message_id=%s, rejecting without requeue: %r", message_id, body[:200])
+        ch.basic_reject(method.delivery_tag, requeue=False)
+        return
+    try:
+        result = accrual.accrue(ticket_id, customer_id, settings.POINTS_PER_TICKET, message_id)
+    except Exception:
+        log.exception("Accrual failed for message_id=%s, will be redelivered", message_id)
+        time.sleep(1)
+        ch.basic_nack(method.delivery_tag, requeue=True)
+        return
+    if result == "duplicate":
+        log.info("Duplicate event ignored: ticket_id=%s message_id=%s (already accrued)", ticket_id, message_id)
+    else:
+        log.info("Accrued %d points to customer=%s for ticket=%s message_id=%s",
+                 settings.POINTS_PER_TICKET, customer_id, ticket_id, message_id)
+    ch.basic_ack(method.delivery_tag)          # подтверждаем после обработки
+```
